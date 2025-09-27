@@ -1,0 +1,15 @@
+{
+  "name": "randm",
+  "version": "1.0.0",
+  "description": "Rick & Morty provably-fair boxes game (CLI)",
+  "main": "randm.js",
+  "scripts": {
+    "start": "node randm.js"
+  },
+  "dependencies": {
+    "cli-table3": "^0.6.2"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
