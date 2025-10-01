@@ -22,5 +22,4 @@ class ClassicMorty {
   }
 }
 
-// Export it as a named class, since MortyLoader expects that
 module.exports = { ClassicMorty };

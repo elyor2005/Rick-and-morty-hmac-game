@@ -2,13 +2,10 @@ const readline = require("readline");
 const crypto = require("crypto");
 
 class GameCore {
-  constructor(numBoxes, MortyClass, mortyName, rounds = 1) {
+  constructor(numBoxes = 3, rounds = 1) {
     this.numBoxes = numBoxes;
-    this.Morty = new MortyClass(numBoxes);
-    this.mortyName = mortyName;
     this.rounds = rounds;
-    this.wins = 0;
-    this.losses = 0;
+    this.results = []; // track results for stats
   }
 
   async run() {
@@ -17,71 +14,150 @@ class GameCore {
       output: process.stdout,
     });
 
+    const ask = (q) =>
+      new Promise((res) => rl.question(q, (ans) => res(ans.trim())));
+
     for (let round = 1; round <= this.rounds; round++) {
-      console.log(`\n🔹 Round ${round} of ${this.rounds}`);
-
-      const secret = crypto.randomBytes(16).toString("hex");
-      const mortyChoice = Math.floor(Math.random() * this.numBoxes);
-      const hmac = crypto
-        .createHmac("sha256", secret)
-        .update(mortyChoice.toString())
-        .digest("hex");
-
       console.log(
-        `\n${this.mortyName}: Oh geez, Rick, I’m hiding your portal gun...`
-      );
-      console.log(`1st Morty: HMAC=${hmac}`);
-      console.log(`1st Morty: Rick, enter your number [0,${this.numBoxes})`);
-
-      const guess = await new Promise((resolve) =>
-        rl.question("> ", (ans) => resolve(parseInt(ans)))
+        `Morty: Oh geez, Rick, I'm gonna hide your portal gun in one of the ${this.numBoxes} boxes, okay?`
       );
 
-      console.log(`\n${this.mortyName}: Okay, okay, I reveal my choice.`);
-      console.log(`Secret=${secret}, My box=${mortyChoice}`);
-
-      const check = crypto
-        .createHmac("sha256", secret)
-        .update(mortyChoice.toString())
+      // === Stage 1: commit random1
+      const key1 = crypto.randomBytes(32).toString("hex");
+      const rand1 = Math.floor(Math.random() * this.numBoxes);
+      const hmac1 = crypto
+        .createHmac("sha256", key1)
+        .update(rand1.toString())
         .digest("hex");
+      console.log(`Morty: HMAC1=${hmac1}`);
 
-      if (check === hmac) {
-        console.log(
-          `${this.mortyName}: See, Rick! I didn’t cheat. The HMAC matches!`
-        );
+      // Rick chooses a box
+      const choice = parseInt(
+        await ask(
+          `Morty: Rick, enter your number [0,${this.numBoxes}) so you don’t whine later that I cheated, alright?\nRick: `
+        ),
+        10
+      );
+
+      // Rick makes a guess
+      const guess = parseInt(
+        await ask(
+          `Morty: Okay, okay, I hid the gun. What’s your guess [0,${this.numBoxes})?\nRick: `
+        ),
+        10
+      );
+
+      // === Stage 2: commit random2
+      console.log(
+        `Morty: Let’s, uh, generate another value now, I mean, to select a box to keep in the game.`
+      );
+      const key2 = crypto.randomBytes(32).toString("hex");
+      const rand2 = Math.floor(Math.random() * 2); // two boxes will remain
+      const hmac2 = crypto
+        .createHmac("sha256", key2)
+        .update(rand2.toString())
+        .digest("hex");
+      console.log(`Morty: HMAC2=${hmac2}`);
+
+      // Rick enters subchoice
+      const subChoice = parseInt(
+        await ask(
+          `Morty: Rick, enter your number [0,2), and, uh, don’t say I didn’t play fair, okay?\nRick: `
+        ),
+        10
+      );
+
+      const fair1 = (choice + rand1) % this.numBoxes; // compute first
+      const keptBoxes = [guess, fair1];
+      console.log(
+        `Morty: I'm keeping the box you chose, I mean ${guess}, and the box ${fair1}.`
+      );
+
+      // Rick decides to switch or stay
+      const finalPick = parseInt(
+        await ask(
+          `Morty: You can switch your box (enter ${fair1}), or, you know, stick with it (enter ${guess}).\nRick: `
+        ),
+        10
+      );
+
+      // === Reveal second commit
+      // === Reveal both commits here (matches teacher sample)
+      console.log(`Morty: Aww man, my 1st random value is ${rand1}.`);
+      console.log(`Morty: KEY1=${key1}`);
+      //  const fair1 = (choice + rand1) % this.numBoxes;
+      console.log(
+        `Morty: So the 1st fair number is (${choice} + ${rand1}) % ${this.numBoxes} = ${fair1}.`
+      );
+
+      //  const keptBoxes = [guess, fair1];
+      console.log(`Morty: Aww man, my 2nd random value is ${rand2}.`);
+      console.log(`Morty: KEY2=${key2}`);
+      const fair2 = (subChoice + rand2) % 2;
+      console.log(
+        `Morty: Uh, okay, the 2nd fair number is (${subChoice} + ${rand2}) % 2 = ${fair2}`
+      );
+
+      const gunBox = keptBoxes[fair2];
+      console.log(`Morty: You portal gun is in the box ${gunBox}.`);
+
+      const switched = finalPick !== guess;
+      const win = finalPick === gunBox;
+      if (win) {
+        console.log(`Morty: Aww man, you won, Rick!`);
       } else {
         console.log(
-          `${this.mortyName}: Uh-oh... Something’s fishy with my HMAC!`
+          `Morty: Aww man, you lost, Rick. Now we gotta go on one of *my* adventures!`
         );
       }
 
-      if (guess === mortyChoice) {
-        console.log("Rick: Wubba lubba dub-dub! I won this round!");
-        this.wins++;
-      } else {
-        console.log("Rick: Damn it, Morty! You tricked me again!");
-        this.losses++;
-      }
+      this.results.push({ switched, win });
     }
 
-    rl.close();
     this.showStats();
+    rl.close();
   }
 
   showStats() {
-    console.log("\n===== 📊 Game Stats =====");
-    console.log(`Total rounds: ${this.rounds}`);
-    console.log(`Rick’s wins: ${this.wins}`);
-    console.log(`Morty’s wins: ${this.losses}`);
-    console.log(`Win rate: ${((this.wins / this.rounds) * 100).toFixed(2)}%`);
+    const rounds = this.results.length;
+    const switchedRounds = this.results.filter((r) => r.switched).length;
+    const stayedRounds = rounds - switchedRounds;
+    const switchWins = this.results.filter((r) => r.switched && r.win).length;
+    const stayWins = this.results.filter((r) => !r.switched && r.win).length;
 
-    const expectedProb = (1 / this.numBoxes) * 100;
+    console.log("                  GAME STATS ");
+    console.log("┌──────────────┬───────────────┬─────────────┐");
+    console.log("│ Game results │ Rick switched │ Rick stayed │");
+    console.log("├──────────────┼───────────────┼─────────────┤");
     console.log(
-      `Expected win probability: ${expectedProb.toFixed(2)}% (with ${
-        this.numBoxes
-      } boxes)`
+      `│ Rounds       │ ${String(switchedRounds).padStart(13)} │ ${String(
+        stayedRounds
+      ).padStart(11)} │`
     );
-    console.log("=========================\n");
+    console.log("├──────────────┼───────────────┼─────────────┤");
+    console.log(
+      `│ Wins         │ ${String(switchWins).padStart(13)} │ ${String(
+        stayWins
+      ).padStart(11)} │`
+    );
+    console.log("├──────────────┼───────────────┼─────────────┤");
+
+    const estSwitch =
+      switchedRounds > 0 ? (switchWins / switchedRounds).toFixed(3) : "?";
+    const estStay =
+      stayedRounds > 0 ? (stayWins / stayedRounds).toFixed(3) : "?";
+    console.log(
+      `│ P (estimate) │ ${String(estSwitch).padStart(13)} │ ${String(
+        estStay
+      ).padStart(11)} │`
+    );
+    console.log("├──────────────┼───────────────┼─────────────┤");
+    console.log(
+      `│ P (exact)    │ ${String((2 / 3).toFixed(3)).padStart(13)} │ ${String(
+        (1 / 3).toFixed(3)
+      ).padStart(11)} │`
+    );
+    console.log("└──────────────┴───────────────┴─────────────┘");
   }
 }
 
