@@ -17,14 +17,23 @@ class GameCore {
     const ask = (q) =>
       new Promise((res) => rl.question(q, (ans) => res(ans.trim())));
 
-    for (let round = 1; round <= this.rounds; round++) {
+    // helper to wrap crypto.randomInt in a Promise
+    const secureRandomInt = (max) =>
+      new Promise((resolve, reject) =>
+        crypto.randomInt(max, (err, n) => (err ? reject(err) : resolve(n)))
+      );
+
+    let keepPlaying = true;
+    let round = 1;
+
+    while (keepPlaying && round <= this.rounds) {
       console.log(
         `Morty: Oh geez, Rick, I'm gonna hide your portal gun in one of the ${this.numBoxes} boxes, okay?`
       );
 
       // === Stage 1: commit random1
       const key1 = crypto.randomBytes(32).toString("hex");
-      const rand1 = Math.floor(Math.random() * this.numBoxes);
+      const rand1 = await secureRandomInt(this.numBoxes);
       const hmac1 = crypto
         .createHmac("sha256", key1)
         .update(rand1.toString())
@@ -52,7 +61,7 @@ class GameCore {
         `Morty: Let’s, uh, generate another value now, I mean, to select a box to keep in the game.`
       );
       const key2 = crypto.randomBytes(32).toString("hex");
-      const rand2 = Math.floor(Math.random() * 2); // two boxes will remain
+      const rand2 = await secureRandomInt(2); // two boxes will remain
       const hmac2 = crypto
         .createHmac("sha256", key2)
         .update(rand2.toString())
@@ -67,7 +76,11 @@ class GameCore {
         10
       );
 
-      const fair1 = (choice + rand1) % this.numBoxes; // compute first
+      // === Ensure Morty keeps two distinct boxes
+      let fair1 = (choice + rand1) % this.numBoxes;
+      if (fair1 === guess) {
+        fair1 = (fair1 + 1) % this.numBoxes; // adjust to avoid duplicate
+      }
       const keptBoxes = [guess, fair1];
       console.log(
         `Morty: I'm keeping the box you chose, I mean ${guess}, and the box ${fair1}.`
@@ -81,16 +94,13 @@ class GameCore {
         10
       );
 
-      // === Reveal second commit
       // === Reveal both commits here (matches teacher sample)
       console.log(`Morty: Aww man, my 1st random value is ${rand1}.`);
       console.log(`Morty: KEY1=${key1}`);
-      //  const fair1 = (choice + rand1) % this.numBoxes;
       console.log(
         `Morty: So the 1st fair number is (${choice} + ${rand1}) % ${this.numBoxes} = ${fair1}.`
       );
 
-      //  const keptBoxes = [guess, fair1];
       console.log(`Morty: Aww man, my 2nd random value is ${rand2}.`);
       console.log(`Morty: KEY2=${key2}`);
       const fair2 = (subChoice + rand2) % 2;
@@ -111,7 +121,19 @@ class GameCore {
         );
       }
 
+      // store results
       this.results.push({ switched, win });
+
+      // === Ask to play again
+      const again = await ask(
+        `Morty: D-do you wanna play another round (y/n)?\nRick: `
+      );
+      if (again.toLowerCase() !== "y") {
+        console.log(`Morty: Okay… uh, bye!`);
+        keepPlaying = false;
+      }
+
+      round++;
     }
 
     this.showStats();
