@@ -16,7 +16,10 @@ class ProvablyFairGenerator {
     if (!Number.isInteger(range) || range <= 0) {
       throw new Error("Range must be a positive integer.");
     }
-    const mortyValue = this._secureRandomInt(range);
+
+    // use Node.js built-in crypto.randomInt for secure RNG
+    const mortyValue = crypto.randomInt(range);
+
     const key = RandomKeyManager.createKey();
     const hmac = crypto
       .createHmac(this.availableAlg, key)
@@ -42,14 +45,6 @@ class ProvablyFairGenerator {
         final,
       }),
     };
-  }
-
-  _secureRandomInt(range) {
-    // unbiased integer in [0, range)
-    const bytes = crypto.randomBytes(6); // up to 48 bits
-    let val = 0n;
-    for (const b of bytes) val = (val << 8n) + BigInt(b);
-    return Number(val % BigInt(range));
   }
 
   _askRickInt(range, prompt) {
